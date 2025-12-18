@@ -2,50 +2,46 @@
 
 /**
  * ====================================================================
- * 【重要：セキュリティとアーキテクチャに関する学習メモ】
+ * 【セキュリティ学習用：Web Crypto API 実装版】
  * --------------------------------------------------------------------
- * 現在の実装：
- * クライアントサイドのみで動作させるため、localStorageを簡易DBとして使用し、
- * パスワードを「平文（そのまま）」で比較・保存しています。
- * * 学習用としての妥協点ですが、実務/本番環境では以下の重大なリスクがあります：
- * 1. XSS（クロスサイトスクリプティング）攻撃を受けた際、localStorageの中身が盗まれる。
- * 2. パスワードが暗号化されていないため、データ漏洩時にアカウントが乗っ取られる。
- * * ★本来あるべき実装（実務での想定）：
- * 1. パスワードはクライアント側で扱わず、HTTPSでサーバーへ送信する。
- * 2. サーバー側でソルト付きハッシュ化（bcrypt/Argon2等）を行ってDB保存する。
- * 3. 認証後はJWTやセッションIDを発行し、HttpOnly Cookieで管理する。
+ * パスワードを平文ではなく、ブラウザ標準の "Web Crypto API" を使用して
+ * SHA-256でハッシュ化してから照合するように改良しました。
+ * これにより、万が一localStorageが漏洩しても、パスワードの原形は守られます。
  * ====================================================================
  */
 
-document.getElementById("loginForm").addEventListener("submit", function(e) {
-  // フォームのデフォルト送信（ページリロード）をキャンセル
+// ハッシュ化関数 (signup.jsと同じアルゴリズムを使用)
+async function hashPassword(text) {
+  const msgUint8 = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+document.getElementById("loginForm").addEventListener("submit", async function(e) {
   e.preventDefault();
 
-  // 入力値の取得
   const userName = document.getElementById("userName").value.trim();
   const password = document.getElementById("password").value;
 
-  // 1. ユーザーデータの取得
-  // LocalStorageから全ユーザー情報を取得（サーバーへの問い合わせの代用）
+  // 1. 入力されたパスワードをハッシュ化する
+  const hashedPassword = await hashPassword(password);
+
+  // 2. ユーザーデータの取得
   const users = JSON.parse(localStorage.getItem("users")) || [];
 
-  // 2. 認証ロジック
-  // 配列操作メソッド find() を使用して、ID/Passが一致するユーザーを検索
-  // TODO: 本番環境ではこの処理はサーバーサイドAPI内で行うべき
-  const found = users.find(u => u.userName === userName && u.password === password);
+  // 3. 認証ロジック (ハッシュ値同士を比較)
+  const found = users.find(u => u.userName === userName && u.password === hashedPassword);
 
-  // 3. 認証結果の判定
   if (!found) {
     alert("ユーザー名またはパスワードが不正です");
     return;
   }
 
-  // 4. セッション確立（簡易実装）
-  // ログイン状態を保持するために currentUser を保存
-  // ※セキュリティリスク: XSS脆弱性があるため、本来は避けるべき実装
+  // 4. ログイン成功処理
+  // セッション情報の保存（パスワードは含めないのがベストプラクティスだが、今回は簡易的にオブジェクトごと保存）
   localStorage.setItem("currentUser", JSON.stringify(found));
 
-  // 5. リダイレクト
-  console.log("Login successful: Redirecting to dashboard...");
+  console.log("Login successful using SHA-256 hash.");
   window.location.href = "index.html";
 });

@@ -460,3 +460,34 @@ deleteAllBtn.addEventListener("click", () => {
   }
   renderWorkspace();
 });
+
+// =========================================================
+// 4. 認証・ログアウト処理 (追加修正)20251218
+// =========================================================
+
+// 画面読み込み時にログイン状態をチェック
+// ※ログインしていないのに index.html を直接開こうとした場合、追い返す
+const currentUser = localStorage.getItem("currentUser");
+if (!currentUser) {
+  window.location.href = "login.html";
+} else {
+  // ログイン中なら、ユーザー名を画面に表示する（もし表示エリアがあれば）
+  // const userObj = JSON.parse(currentUser);
+  // document.getElementById("userNameDisplay").textContent = userObj.userName; 
+}
+
+// ログアウトボタンの処理
+const logoutBtn = document.getElementById("logoutBtn");
+
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    // 1. 確認ダイアログ（UX向上）
+    if (!confirm("ログアウトしますか？")) return;
+
+    // 2. セッション情報の削除（ローカルストレージをクリア）
+    localStorage.removeItem("currentUser");
+
+    // 3. ログイン画面へ戻る
+    window.location.href = "login.html";
+  });
+}
