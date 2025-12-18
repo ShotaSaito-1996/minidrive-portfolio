@@ -1,6 +1,7 @@
 # MiniDrive (Browser-based File Management App)
 Demo App
 **[デモアプリをこちらにて公開中 (Click here)](https://shotasaito-1996.github.io/minidrive-portfolio/MiniDrive/client/index.html)**
+
 ■概要
 Google Driveのような「ファイル管理」を、サーバーを介さずにブラウザ上だけで完結させるWebアプリケーションです。
 未経験からのWebエンジニア転向に向けたポートフォリオとして、**「フレームワークに頼らず、JavaScriptの基礎とデータ構造を理解すること」**を目的に作成しました。
