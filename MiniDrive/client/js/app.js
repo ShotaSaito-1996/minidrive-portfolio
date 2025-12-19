@@ -20,6 +20,18 @@ let db;                     // IndexedDB インスタンス
 let uploadWorkspace = [];   // アップロード待機中のファイルリスト（Fileオブジェクト）
 let downloadWorkspace = []; // ダウンロード選択中のファイルリスト（DBから取得したオブジェクト）
 
+// ★追加: ログイン中のユーザー情報を取得
+const currentUserJson = localStorage.getItem("currentUser");
+const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
+
+if (!currentUser) {
+  window.location.href = "login.html";
+} else {
+  // ログイン中なら、ユーザー名を画面に表示する（もし表示エリアがあれば）
+  // const userObj = JSON.parse(currentUser);
+  // document.getElementById("userNameDisplay").textContent = userObj.userName; 
+}
+
 // ---------- DOM 要素の取得 ----------
 // モード切替スイッチとUI表示要素
 const toggle = document.getElementById("modeToggle");
@@ -94,7 +106,8 @@ async function saveFileToDB(file) {
       size: file.size,
       data: file, // バイナリデータ本体
       lastModified: file.lastModified,
-      createdAt: new Date()
+      createdAt: new Date(),
+      owner: currentUser.userName
     });
     
     request.onsuccess = () => resolve();
@@ -106,6 +119,8 @@ async function saveFileToDB(file) {
  * 全ファイル読み込み (サーバーリスト表示用)
  * カーソル(Cursor)を使って全件走査します。
  */
+// app.js 内の loadFilesFromDB を修正
+
 async function loadFilesFromDB() {
   return new Promise((resolve) => {
     const tx = db.transaction("files", "readonly");
@@ -116,10 +131,17 @@ async function loadFilesFromDB() {
     request.onsuccess = (e) => {
       const cursor = e.target.result;
       if (cursor) {
-        result.push(cursor.value);
-        cursor.continue(); // 次のデータへ
+        // ★修正: データの所有者(owner)が、今のユーザーと一致するかチェック
+        const fileData = cursor.value;
+        
+        // 所有者情報がない（昔のデータ）or 所有者が自分と一致する場合のみ追加
+        if (!fileData.owner || fileData.owner === currentUser.userName) {
+            result.push(fileData);
+        }
+        
+        cursor.continue();
       } else {
-        resolve(result); // 全件取得完了
+        resolve(result);
       }
     };
   });
@@ -146,6 +168,7 @@ async function getFileFromDB(id) {
 // =========================================================
 
 // モード切替時の表示制御
+// モード切替時の表示更新
 async function updateUI() {
   const isUploadMode = toggle.checked;
 
@@ -154,13 +177,14 @@ async function updateUI() {
     mainTitle.textContent = "ファイルアップロード";
     modeLabel.textContent = "アップロード";
     
-    // 表示切替: アップロード機能を有効化
     fileBtn.style.display = "inline-block";
     folderBtn.style.display = "inline-block";
     uploadBtn.style.display = "inline-block";
+
+    // ★修正: 完全に表示する
+    dropzone.style.display = "block"; 
     dropzone.style.opacity = "1";
     
-    // 表示切替: ダウンロード機能を無効化
     downloadContainer.style.display = "none";
     exportBtn.style.display = "none";
 
@@ -169,30 +193,50 @@ async function updateUI() {
     mainTitle.textContent = "ファイルダウンロード";
     modeLabel.textContent = "ダウンロード";
 
-    // 表示切替: アップロード機能を無効化
     fileBtn.style.display = "none";
     folderBtn.style.display = "none";
     uploadBtn.style.display = "none";
-    dropzone.style.opacity = "0.5"; // DnDできないことを視覚的に伝達
 
-    // 表示切替: ダウンロード機能を有効化
+    // ★修正: 完全に消す（非表示にする）
+    dropzone.style.display = "none"; 
+
     downloadContainer.style.display = "block";
     exportBtn.style.display = "inline-block";
 
-    // DBから最新リストを取得して描画
     await renderServerFileList();
   }
 
-  // 作業領域（選択中のファイルリスト）の再描画
   renderWorkspace();
 }
 
-// サーバーファイルリスト（DBの中身）のDOM生成
+// =========================================================
+// 追加実装: DBからの削除処理
+// =========================================================
+
+// ファイル削除関数 (ID指定)
+// ※これがないと「deleteFileFromDB is not defined」エラーになります
+async function deleteFileFromDB(id) {
+  return new Promise((resolve, reject) => {
+    // 読み書き権限(readwrite)でトランザクションを開始
+    const tx = db.transaction("files", "readwrite");
+    const store = tx.objectStore("files");
+    
+    // 削除リクエストを実行
+    const request = store.delete(id);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// =========================================================
+// サーバーファイルリスト（DBの中身）の描画
+// =========================================================
 async function renderServerFileList() {
   const files = await loadFilesFromDB();
   serverFileListEl.innerHTML = "";
 
-  // 空の状態ハンドリング
+  // ファイルがない場合のメッセージ表示切り替え
   if (files.length === 0) {
     emptyMessage.classList.remove("hidden");
     emptyMessage.style.display = "block";
@@ -201,51 +245,79 @@ async function renderServerFileList() {
     emptyMessage.style.display = "none";
   }
 
-  // リスト生成
   files.forEach((f) => {
     const li = document.createElement("li");
-    // Flexboxでレイアウト調整
     li.style.display = "flex";
     li.style.justifyContent = "space-between";
     li.style.alignItems = "center";
-    li.style.padding = "5px 0";
+    li.style.padding = "10px";
     li.style.borderBottom = "1px solid #eee";
 
-    // ファイル名とサイズ
+    // --- 左側：ファイル名 ---
     const infoSpan = document.createElement("span");
     infoSpan.textContent = `${f.name} (${formatSize(f.size)})`;
+    
+    // レイアウト崩れ防止（名前が長すぎる場合の対策）
+    infoSpan.style.overflow = "hidden";
+    infoSpan.style.textOverflow = "ellipsis";
+    infoSpan.style.whiteSpace = "nowrap";
+    infoSpan.style.marginRight = "10px";
 
-    // 「＋」ボタン: ダウンロード候補に追加
+    // --- 右側：ボタンエリア ---
+    const btnGroup = document.createElement("div");
+    btnGroup.style.display = "flex";
+    btnGroup.style.gap = "5px"; 
+    btnGroup.style.flexShrink = "0"; // ファイル名に押されてボタンが潰れないようにする
+
+    // [＋追加] ボタン
     const addBtn = document.createElement("button");
-    addBtn.textContent = "＋";
-    addBtn.style.marginLeft = "10px";
+    addBtn.textContent = "＋追加";
+    addBtn.style.cursor = "pointer";
+    addBtn.style.padding = "8px 20px";
+    addBtn.style.lineHeight = "1";
+    addBtn.style.height = "auto";
+    addBtn.style.whiteSpace = "nowrap";
+    
     addBtn.addEventListener("click", () => addToDownloadWorkspace(f));
 
+    // [削除] ボタン
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "削除";
+    delBtn.style.backgroundColor = "#ff4444"; 
+    delBtn.style.color = "white";
+    delBtn.style.border = "none";
+    delBtn.style.borderRadius = "4px";
+    delBtn.style.padding = "8px 20px";
+    delBtn.style.cursor = "pointer";
+    delBtn.style.lineHeight = "1";
+    delBtn.style.height = "auto";
+    delBtn.style.whiteSpace = "nowrap";
+
+    delBtn.addEventListener("click", async () => {
+      // 確認ダイアログ
+      if(confirm(`「${f.name}」を完全に削除しますか？`)) {
+        try {
+          // ここで上の deleteFileFromDB 関数を呼び出す
+          await deleteFileFromDB(f.id);
+          // 削除後にリストを再描画して反映させる
+          await renderServerFileList();
+        } catch (err) {
+          console.error("削除エラー:", err);
+          alert("削除に失敗しました");
+        }
+      }
+    });
+
+    // 並び順：[＋追加] [削除]
+    btnGroup.appendChild(addBtn);
+    btnGroup.appendChild(delBtn);
+
     li.appendChild(infoSpan);
-    li.appendChild(addBtn);
+    li.appendChild(btnGroup);
     serverFileListEl.appendChild(li);
   });
 }
 
-// 作業領域（選択中のファイル一覧）の描画
-function renderWorkspace() {
-  uploadFileListEl.innerHTML = "";
-  downloadFileListEl.innerHTML = "";
-  const isUploadMode = toggle.checked;
-
-  // モードに応じて描画対象の配列を切り替え
-  if (isUploadMode) {
-    uploadWorkspace.forEach((f, index) => {
-      const li = createListItem(f.name, f.size, index, "upload");
-      uploadFileListEl.appendChild(li);
-    });
-  } else {
-    downloadWorkspace.forEach((f, index) => {
-      const li = createListItem(f.name, f.size, index, "download");
-      downloadFileListEl.appendChild(li);
-    });
-  }
-}
 
 // リストアイテム(li要素)生成ヘルパー関数
 // 重複コードを避けるため共通化
@@ -467,14 +539,6 @@ deleteAllBtn.addEventListener("click", () => {
 
 // 画面読み込み時にログイン状態をチェック
 // ※ログインしていないのに index.html を直接開こうとした場合、追い返す
-const currentUser = localStorage.getItem("currentUser");
-if (!currentUser) {
-  window.location.href = "login.html";
-} else {
-  // ログイン中なら、ユーザー名を画面に表示する（もし表示エリアがあれば）
-  // const userObj = JSON.parse(currentUser);
-  // document.getElementById("userNameDisplay").textContent = userObj.userName; 
-}
 
 // ログアウトボタンの処理
 const logoutBtn = document.getElementById("logoutBtn");
@@ -490,4 +554,50 @@ if (logoutBtn) {
     // 3. ログイン画面へ戻る
     window.location.href = "login.html";
   });
+}
+
+// =========================================================
+// 消えてしまった関数たちの復活
+// =========================================================
+
+// 作業領域（選択中のファイル一覧）の描画
+function renderWorkspace() {
+  uploadFileListEl.innerHTML = "";
+  downloadFileListEl.innerHTML = "";
+  const isUploadMode = toggle.checked;
+
+  // モードに応じて描画対象の配列を切り替え
+  if (isUploadMode) {
+    uploadWorkspace.forEach((f, index) => {
+      const li = createListItem(f.name, f.size, index, "upload");
+      uploadFileListEl.appendChild(li);
+    });
+  } else {
+    downloadWorkspace.forEach((f, index) => {
+      const li = createListItem(f.name, f.size, index, "download");
+      downloadFileListEl.appendChild(li);
+    });
+  }
+}
+
+// リストアイテム生成ヘルパー
+function createListItem(name, size, index, type) {
+  const li = document.createElement("li");
+  
+  li.innerHTML = `
+    <span>${name} (${formatSize(size)})</span>
+    <button class="del-btn" style="padding:2px 6px; cursor:pointer;">削除</button>
+  `;
+
+  // 削除ボタンのイベント
+  li.querySelector(".del-btn").addEventListener("click", () => {
+    if (type === "upload") {
+      uploadWorkspace.splice(index, 1);
+    } else {
+      downloadWorkspace.splice(index, 1);
+    }
+    renderWorkspace();
+  });
+
+  return li;
 }
