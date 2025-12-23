@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>MiniDrive_ESmodule_ver</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header>
+    <h1>MiniDrive</h1>
+    <div id="username-logout">
+    <span id="userNameDisplay" style="margin-right: 16px; font-weight: bold;"></span>
+    <button id="logoutBtn">ログアウト</button>
+    </div>
+  </header>
+
+  <main>
+
+    <section id="upload-section">
+      <h2 id="mainTitle">ファイルアップロード</h2>
+      <!-- トグルスイッチ -->
+      <div class="mode-toggle">
+        <span id="modeLabel">アップロード</span>
+        <label class="switch">
+        <input type="checkbox" id="modeToggle">
+        <span class="slider"></span>
+        </label>
+        
+        </div>
+
+      <div id="dropzone">
+        ここにファイルをドラッグ＆ドロップ
+      </div>
+      <div id="downloadContainer" style="display: none; margin-top: 20px;">
+      <h3>保存されているファイル</h3>
+      <ul id="serverFileList"></ul>
+      <p class="muted">※「＋」を押すとダウンロード作業領域に追加されます。</p>
+      <p id="emptyMessage" class="muted hidden">現在、サーバーに保存されているファイルはありません。</p>
+
+      </div>
+
+      <!-- ファイル選択 -->
+      <input type="file" id="fileInput" class="hidden-input" multiple>
+      <button id="fileBtn" class="upload-btn">ファイルを選択</button>
+
+      <!-- フォルダ選択 -->
+      <input type="file" id="folderInput" class="hidden-input" webkitdirectory>
+      <button id="folderBtn" class="upload-btn">フォルダを選択</button>
+
+    </section>
+
+    <section id="file-list-section">
+      <h2>選択中のファイル一覧</h2>
+        <ul id="uploadFileList"></ul>
+        <ul id="downloadFileList"></ul>
+        <button id="deleteAllBtn">すべて削除</button>
+
+      <div id="upload-button-container">
+        <button id="exportBtn">ダウンロード(.zip)</button>
+        <button id="uploadBtn">アップロード</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+  </footer>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module" src="js/main.js"></script>
+
+</body>
+</html>
